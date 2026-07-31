@@ -35,7 +35,7 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
   justify-content:center;font-size:10px;font-weight:900;}
 .cf-video-wrap{position:relative;width:100%;max-width:340px;aspect-ratio:9/16;border-radius:16px;
   overflow:hidden;background:#000;box-shadow:0 24px 60px -20px rgba(0,0,0,.8),0 0 0 1px var(--line);}
-.cf-video-wrap video,.cf-fake{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.cf-video-wrap video,.cf-fake{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
 .cf-fake{background:linear-gradient(135deg,#2a1f3d 0%,#1b2a4a 45%,#0d3b3b 100%);
   display:flex;align-items:center;justify-content:center;}
 .cf-fake span{font-size:12px;color:rgba(255,255,255,.4);font-weight:700;letter-spacing:.08em;
@@ -164,6 +164,9 @@ export default function App() {
   const [error, setError] = useState("");
   const [resultUrl, setResultUrl] = useState("");
   const timer = useRef(null);
+  const wrapRef = useRef(null);
+  const [boxH, setBoxH] = useState(600);      // measured preview height, for WYSIWYG caption scale
+  const [aspect, setAspect] = useState(null); // uploaded video's width/height; null until metadata loads
 
   const words = useMemo(() => previewText.trim().split(/\s+/).filter(Boolean), [previewText]);
 
@@ -174,6 +177,19 @@ export default function App() {
     }
     return () => clearInterval(timer.current);
   }, [playing, words.length, resultUrl]);
+
+  // Track the preview box's real pixel height so captions scale to match the
+  // burned output regardless of the video's aspect ratio.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect?.height;
+      if (h) setBoxH(h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   function applyPreset(p) {
     const f = PRESETS.find((x) => x.id === p);
@@ -187,10 +203,12 @@ export default function App() {
   const group = words.slice(gi * s.perGroup, gi * s.perGroup + s.perGroup);
   const localActive = wi - gi * s.perGroup;
 
+  const pscale = boxH / 640; // preview height vs the reference the .ass builder scales to
   const shadow = s.outlineW > 0
     ? Array.from({ length: 8 }, (_, i) => {
         const a = (i * Math.PI) / 4;
-        return `${Math.cos(a) * s.outlineW}px ${Math.sin(a) * s.outlineW}px 0 ${s.outline}`;
+        const ow = s.outlineW * pscale;
+        return `${Math.cos(a) * ow}px ${Math.sin(a) * ow}px 0 ${s.outline}`;
       }).join(",")
     : "0 2px 6px rgba(0,0,0,.5)";
 
@@ -205,9 +223,9 @@ export default function App() {
   }
 
   const capBoxStyle = {
-    fontFamily: `'${s.font}', sans-serif`, fontSize: s.size, fontWeight: s.weight, lineHeight: 1.15,
-    letterSpacing: s.spacing, textTransform: s.upper ? "uppercase" : "none", textAlign: "center",
-    padding: s.box ? "8px 14px" : "0", borderRadius: 10, background: s.box || "transparent",
+    fontFamily: `'${s.font}', sans-serif`, fontSize: s.size * pscale, fontWeight: s.weight, lineHeight: 1.15,
+    letterSpacing: s.spacing * pscale, textTransform: s.upper ? "uppercase" : "none", textAlign: "center",
+    padding: s.box ? `${8 * pscale}px ${14 * pscale}px` : "0", borderRadius: 10 * pscale, background: s.box || "transparent",
     display: "flex", flexWrap: "wrap", gap: "0 .4em", justifyContent: "center", alignContent: "center",
     filter: preset === "neon" ? `drop-shadow(0 0 6px ${s.color}) drop-shadow(0 0 14px ${s.active})` : "none",
   };
@@ -327,11 +345,13 @@ export default function App() {
 
         {/* CENTER */}
         <div className="cf-stage">
-          <div className="cf-video-wrap">
+          <div className="cf-video-wrap" ref={wrapRef} style={{ aspectRatio: aspect ? String(aspect) : "9 / 16" }}>
             {resultUrl ? (
-              <video src={resultUrl} controls autoPlay loop playsInline />
+              <video src={resultUrl} controls autoPlay loop playsInline
+                onLoadedMetadata={(e) => setAspect(e.currentTarget.videoWidth / e.currentTarget.videoHeight)} />
             ) : videoUrl ? (
-              <video src={videoUrl} autoPlay loop muted playsInline />
+              <video src={videoUrl} autoPlay loop muted playsInline
+                onLoadedMetadata={(e) => setAspect(e.currentTarget.videoWidth / e.currentTarget.videoHeight)} />
             ) : (
               <div className="cf-fake"><span>Upload a video to begin</span></div>
             )}

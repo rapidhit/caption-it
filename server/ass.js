@@ -39,6 +39,7 @@ export function buildAss(words, cfg, width, height) {
   const outline = Math.max(0, Math.round((cfg.outlineWidth || 0) * scale));
   const spacing = +((cfg.letterSpacing || 0) * scale).toFixed(1);
   const marginV = Math.round(height * 0.07);
+  const marginH = Math.round(width * 0.06);
   const align = { top: 8, center: 5, bottom: 2 }[cfg.position] || 2;
   const bold = (cfg.weight || 400) >= 700 ? -1 : 0;
 
@@ -59,7 +60,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,${cfg.font || "Inter"},${fontSize},&H00${base},&H00${active},&H00${outlineCol},${backColour},${bold},0,0,0,100,100,${spacing},0,${borderStyle},${outline},1,${align},60,60,${marginV},1
+Style: Cap,${cfg.font || "Inter"},${fontSize},&H00${base},&H00${active},&H00${outlineCol},${backColour},${bold},0,0,0,100,100,${spacing},0,${borderStyle},${outline},1,${align},${marginH},${marginH},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
