@@ -85,6 +85,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
 .cf-spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--accent);
   border-radius:50%;display:inline-block;vertical-align:middle;margin-right:8px;animation:cf-spin .7s linear infinite;}
 @keyframes cf-spin{to{transform:rotate(360deg);}}
+.cf-prog{margin-top:12px;}
+.cf-prog-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;
+  font-weight:700;color:var(--mute);margin-bottom:6px;letter-spacing:.02em;}
+.cf-prog-head b{color:var(--mint);font-variant-numeric:tabular-nums;}
+.cf-bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;position:relative;}
+.cf-bar-fill{height:100%;background:var(--mint);border-radius:99px;transition:width .2s ease;}
+.cf-bar.indet .cf-bar-fill{position:absolute;width:38%;left:-38%;animation:cf-indet 1.1s ease-in-out infinite;}
+@keyframes cf-indet{0%{left:-38%;}100%{left:100%;}}
 /* Tablet: preview full-width on top, presets + controls side by side below */
 @media(max-width:1080px){
   .cf-grid{grid-template-columns:1fr 1fr;max-width:860px;min-height:0;}
@@ -151,7 +159,7 @@ export default function App() {
   const [videoUrl, setVideoUrl] = useState("");
   const [playing, setPlaying] = useState(true);
   const [wi, setWi] = useState(0);
-  const [status, setStatus] = useState("");
+  const [prog, setProg] = useState(null); // {phase, pct}
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [resultUrl, setResultUrl] = useState("");
@@ -223,29 +231,62 @@ export default function App() {
     };
   }
 
-  async function generate() {
-    if (!file) { setError("Upload a video first."); return; }
-    setBusy(true); setError(""); setResultUrl("");
-    setStatus("Uploading video…");
+  function fail(msg) {
+    setError(msg || "Something went wrong.");
+    setProg(null);
+    setBusy(false);
+  }
+
+  async function fetchResult(jobId) {
     try {
-      const fd = new FormData();
-      fd.append("video", file);
-      fd.append("config", JSON.stringify(buildConfig()));
-      setStatus("Transcribing audio + burning captions… this can take a minute.");
-      const res = await fetch("/api/caption", { method: "POST", body: fd });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(msg || `Server error (${res.status})`);
-      }
+      const res = await fetch(`/api/result/${jobId}`);
+      if (!res.ok) throw new Error("Couldn't fetch the finished video.");
       const blob = await res.blob();
       setResultUrl(URL.createObjectURL(blob));
-      setStatus("");
-    } catch (e) {
-      setError(e.message || "Something went wrong.");
-      setStatus("");
-    } finally {
+      setProg(null);
       setBusy(false);
+    } catch (e) {
+      fail(e.message);
     }
+  }
+
+  function listen(jobId) {
+    setProg({ phase: "transcribing", pct: 0 });
+    const es = new EventSource(`/api/progress/${jobId}`);
+    es.onmessage = (ev) => {
+      let d;
+      try { d = JSON.parse(ev.data); } catch { return; }
+      if (d.phase === "burning") setProg({ phase: "burning", pct: d.pct || 0 });
+      else if (d.phase === "transcribing" || d.phase === "queued") setProg({ phase: "transcribing", pct: 0 });
+      else if (d.phase === "done") { es.close(); fetchResult(jobId); }
+      else if (d.phase === "error") { es.close(); fail(d.message); }
+    };
+    es.onerror = () => { /* EventSource auto-retries; server sends done/error explicitly */ };
+  }
+
+  function generate() {
+    if (!file) { setError("Upload a video first."); return; }
+    setBusy(true); setError(""); setResultUrl("");
+    setProg({ phase: "uploading", pct: 0 });
+
+    const fd = new FormData();
+    fd.append("video", file);
+    fd.append("config", JSON.stringify(buildConfig()));
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/caption");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) setProg({ phase: "uploading", pct: Math.round((e.loaded / e.total) * 100) });
+    };
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) { fail(xhr.responseText || `Server error (${xhr.status})`); return; }
+      let jobId;
+      try { jobId = JSON.parse(xhr.responseText).jobId; } catch { jobId = null; }
+      if (!jobId) { fail("Unexpected server response."); return; }
+      listen(jobId);
+    };
+    xhr.onerror = () => fail("Upload failed — check your connection.");
+    xhr.send(fd);
   }
 
   return (
@@ -405,10 +446,25 @@ export default function App() {
           <button className="cf-btn primary" disabled={busy || !file} onClick={generate}>
             {busy ? <><span className="cf-spin" />Working…</> : "Caption my video"}
           </button>
-          {status && <p className="cf-status" style={{ marginTop: 12 }}>{status}</p>}
+          {prog && (
+            <div className="cf-prog">
+              <div className="cf-prog-head">
+                <span>
+                  {prog.phase === "uploading" ? "Uploading video"
+                    : prog.phase === "burning" ? "Burning captions"
+                    : "Transcribing audio"}
+                </span>
+                {(prog.phase === "uploading" || prog.phase === "burning") && <b>{prog.pct}%</b>}
+              </div>
+              <div className={"cf-bar" + (prog.phase === "transcribing" ? " indet" : "")}>
+                <div className="cf-bar-fill"
+                  style={prog.phase === "transcribing" ? undefined : { width: `${prog.pct}%` }} />
+              </div>
+            </div>
+          )}
           {error && <p className="cf-err" style={{ marginTop: 12 }}>{error}</p>}
           {resultUrl && !error && (
-            <button className="cf-btn ghost" onClick={() => { setResultUrl(""); setStatus(""); }}>
+            <button className="cf-btn ghost" onClick={() => { setResultUrl(""); setProg(null); }}>
               Tweak style & re-render
             </button>
           )}
