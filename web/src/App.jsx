@@ -60,6 +60,10 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
   border-top:1px solid var(--line);flex:none;flex-wrap:wrap;}
 .cf-modal-foot .cf-dpad{margin-top:0;}
 .cf-modal-hint{font-size:12px;color:var(--mute);max-width:340px;}
+.cf-guide{position:absolute;pointer-events:none;z-index:3;background:rgba(255,255,255,.35);}
+.cf-guide-v{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px);}
+.cf-guide-h{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px);}
+.cf-guide.on{background:var(--mint);box-shadow:0 0 7px var(--mint);}
 .cf-word{display:inline-block;transition:transform .12s ease,color .1s;}
 .cf-transport{display:flex;align-items:center;gap:12px;width:100%;max-width:340px;}
 .cf-play{width:42px;height:42px;border-radius:50%;border:none;flex:none;background:var(--accent);
@@ -263,7 +267,8 @@ export default function App() {
     if (!dragging || !dragRef.current) return;
     const { px, py } = stagePoint(e);
     const off = dragOffsetRef.current;
-    setCapPos({ x: clampPos(px - off.dx), y: clampPos(py - off.dy) });
+    const snap = (v) => (Math.abs(v - 0.5) < 0.025 ? 0.5 : v); // pull to the center lines
+    setCapPos({ x: snap(clampPos(px - off.dx)), y: snap(clampPos(py - off.dy)) });
   }
   function onStageUp(e) { setDragging(false); dragRef.current?.releasePointerCapture?.(e.pointerId); }
   function onEditKey(e) {
@@ -608,6 +613,12 @@ export default function App() {
                 ? <video src={videoUrl} autoPlay loop muted playsInline />
                 : <div className="cf-fake"><span>Upload a video first</span></div>}
               {captionLayer(editH / 640, { edit: true })}
+              {dragging && (
+                <>
+                  <div className={"cf-guide cf-guide-v" + (capPos.x === 0.5 ? " on" : "")} />
+                  <div className={"cf-guide cf-guide-h" + (capPos.y === 0.5 ? " on" : "")} />
+                </>
+              )}
             </div>
           </div>
           <div className="cf-modal-foot">
