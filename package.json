@@ -1,0 +1,26 @@
+{
+  "name": "caption-forge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Upload a video, get it back with accurate word-by-word captions burned in.",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/multipart": "^9.0.1",
+    "@fastify/static": "^8.0.3",
+    "fastify": "^5.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "vite": "^6.0.3"
+  }
+}
