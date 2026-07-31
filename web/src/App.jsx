@@ -40,7 +40,23 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
   display:flex;align-items:center;justify-content:center;}
 .cf-fake span{font-size:12px;color:rgba(255,255,255,.4);font-weight:700;letter-spacing:.08em;
   text-transform:uppercase;text-align:center;padding:0 30px;}
-.cf-caplayer{position:absolute;inset:0;display:flex;padding:6% 7%;pointer-events:none;}
+.cf-caplayer{position:absolute;inset:0;pointer-events:none;}
+.cf-capbox{position:absolute;}
+.cf-dpad{display:grid;grid-template-columns:repeat(3,34px);gap:5px;justify-content:center;margin-top:10px;}
+.cf-dpad button{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;height:32px;cursor:pointer;font-size:14px;line-height:1;}
+.cf-dpad button:hover{border-color:var(--accent);background:var(--panel2);}
+.cf-dpad .sp{visibility:hidden;}
+.cf-editbtn{width:100%;margin-top:10px;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;}
+.cf-editbtn:hover:not(:disabled){border-color:var(--accent);}
+.cf-editbtn:disabled{opacity:.5;cursor:not-allowed;}
+.cf-modal{position:fixed;inset:0;background:rgba(6,6,10,.86);backdrop-filter:blur(6px);z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;outline:none;}
+.cf-modal-video{position:relative;max-width:min(92vw,520px);max-height:70vh;background:#000;border-radius:14px;
+  overflow:hidden;box-shadow:0 30px 80px -20px #000;touch-action:none;}
+.cf-modal-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+.cf-modal-hint{font-size:12px;color:var(--mute);margin:0;}
+.cf-modal-actions{display:flex;gap:14px;align-items:center;}
+.cf-modal-actions .cf-dpad{margin-top:0;}
 .cf-word{display:inline-block;transition:transform .12s ease,color .1s;}
 .cf-transport{display:flex;align-items:center;gap:12px;width:100%;max-width:340px;}
 .cf-play{width:42px;height:42px;border-radius:50%;border:none;flex:none;background:var(--accent);
@@ -147,7 +163,7 @@ const PRESETS = [
     sw: { bg: "#111", t: "Pb", c: "#FF5C38" } },
 ];
 
-const posMap = { top: "flex-start", center: "center", bottom: "flex-end" };
+const posToXY = (pos) => ({ x: 0.5, y: pos === "top" ? 0.12 : pos === "center" ? 0.5 : 0.85 });
 
 export default function App() {
   const [preset, setPreset] = useState("hormozi");
@@ -167,16 +183,23 @@ export default function App() {
   const wrapRef = useRef(null);
   const [boxH, setBoxH] = useState(600);      // measured preview height, for WYSIWYG caption scale
   const [aspect, setAspect] = useState(null); // uploaded video's width/height; null until metadata loads
+  const [capPos, setCapPos] = useState({ x: 0.5, y: 0.85 }); // normalized caption anchor
+  const [editing, setEditing] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [editH, setEditH] = useState(600);
+  const dragRef = useRef(null);
+  const modalRef = useRef(null);
+  const clampPos = (v) => Math.max(0.02, Math.min(0.98, v));
 
   const words = useMemo(() => previewText.trim().split(/\s+/).filter(Boolean), [previewText]);
 
   useEffect(() => {
     clearInterval(timer.current);
-    if (playing && words.length && !resultUrl) {
+    if (playing && words.length && !resultUrl && !editing) {
       timer.current = setInterval(() => setWi((p) => (p + 1) % words.length), 360);
     }
     return () => clearInterval(timer.current);
-  }, [playing, words.length, resultUrl]);
+  }, [playing, words.length, resultUrl, editing]);
 
   // Track the preview box's real pixel height so captions scale to match the
   // burned output regardless of the video's aspect ratio.
@@ -191,44 +214,96 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
+  // When the editor opens, focus it (for arrow keys) and measure its box.
+  useEffect(() => {
+    if (!editing) return;
+    modalRef.current?.focus();
+    const el = dragRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((es) => { const h = es[0]?.contentRect?.height; if (h) setEditH(h); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [editing, aspect]);
+
   function applyPreset(p) {
     const f = PRESETS.find((x) => x.id === p);
     setPreset(p);
     setS({ ...f.s });
+    setCapPos(posToXY(f.s.pos));
     setWi(0);
   }
   const up = (k, v) => setS((o) => ({ ...o, [k]: v }));
+
+  const nudge = (dx, dy) => setCapPos((p) => ({ x: clampPos(p.x + dx), y: clampPos(p.y + dy) }));
+  function onCapPointerDown(e) { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); setDragging(true); }
+  function onCapPointerMove(e) {
+    if (!dragging || !dragRef.current) return;
+    const r = dragRef.current.getBoundingClientRect();
+    setCapPos({ x: clampPos((e.clientX - r.left) / r.width), y: clampPos((e.clientY - r.top) / r.height) });
+  }
+  function onCapPointerUp(e) { setDragging(false); e.currentTarget.releasePointerCapture?.(e.pointerId); }
+  function onEditKey(e) {
+    const m = { ArrowUp: [0, -0.02], ArrowDown: [0, 0.02], ArrowLeft: [-0.02, 0], ArrowRight: [0.02, 0] };
+    if (m[e.key]) { e.preventDefault(); nudge(m[e.key][0], m[e.key][1]); }
+    else if (e.key === "Escape") setEditing(false);
+  }
 
   const gi = Math.floor(wi / s.perGroup);
   const group = words.slice(gi * s.perGroup, gi * s.perGroup + s.perGroup);
   const localActive = wi - gi * s.perGroup;
 
-  const pscale = boxH / 640; // preview height vs the reference the .ass builder scales to
-  const shadow = s.outlineW > 0
-    ? Array.from({ length: 8 }, (_, i) => {
+  function shadowFor(scale) {
+    if (s.outlineW > 0) {
+      const ow = s.outlineW * scale;
+      return Array.from({ length: 8 }, (_, i) => {
         const a = (i * Math.PI) / 4;
-        const ow = s.outlineW * pscale;
         return `${Math.cos(a) * ow}px ${Math.sin(a) * ow}px 0 ${s.outline}`;
-      }).join(",")
-    : "0 2px 6px rgba(0,0,0,.5)";
+      }).join(",");
+    }
+    return "0 2px 6px rgba(0,0,0,.5)";
+  }
 
-  function wordStyle(idx) {
+  function wordStyleFor(idx, sh) {
     const isActive = idx === localActive;
     return {
       color: (isActive && s.mode === "word") ? s.active
         : s.mode === "fill" ? (idx <= localActive ? s.active : s.color) : s.color,
-      textShadow: shadow,
+      textShadow: sh,
       transform: isActive && s.anim === "pop" ? "scale(1.14)" : "scale(1)",
     };
   }
 
-  const capBoxStyle = {
-    fontFamily: `'${s.font}', sans-serif`, fontSize: s.size * pscale, fontWeight: s.weight, lineHeight: 1.15,
-    letterSpacing: s.spacing * pscale, textTransform: s.upper ? "uppercase" : "none", textAlign: "center",
-    padding: s.box ? `${8 * pscale}px ${14 * pscale}px` : "0", borderRadius: 10 * pscale, background: s.box || "transparent",
-    display: "flex", flexWrap: "wrap", gap: "0 .4em", justifyContent: "center", alignContent: "center",
-    filter: preset === "neon" ? `drop-shadow(0 0 6px ${s.color}) drop-shadow(0 0 14px ${s.active})` : "none",
-  };
+  function capBoxStyleFor(scale) {
+    return {
+      fontFamily: `'${s.font}', sans-serif`, fontSize: s.size * scale, fontWeight: s.weight, lineHeight: 1.15,
+      letterSpacing: s.spacing * scale, textTransform: s.upper ? "uppercase" : "none", textAlign: "center",
+      padding: s.box ? `${8 * scale}px ${14 * scale}px` : "0", borderRadius: 10 * scale, background: s.box || "transparent",
+      display: "flex", flexWrap: "wrap", gap: "0 .4em", justifyContent: "center", alignContent: "center",
+      filter: preset === "neon" ? `drop-shadow(0 0 6px ${s.color}) drop-shadow(0 0 14px ${s.active})` : "none",
+    };
+  }
+
+  // The caption block, anchored at the normalized capPos. Pass drag handlers to
+  // make it grabbable (used in the position editor).
+  function captionLayer(scale, handlers) {
+    const sh = shadowFor(scale);
+    return (
+      <div className="cf-caplayer">
+        <div className="cf-capbox"
+          style={{
+            ...capBoxStyleFor(scale),
+            left: `${capPos.x * 100}%`, top: `${capPos.y * 100}%`,
+            transform: "translate(-50%,-50%)", maxWidth: "92%",
+            ...(handlers ? { pointerEvents: "auto", cursor: dragging ? "grabbing" : "grab", touchAction: "none" } : {}),
+          }}
+          {...(handlers || {})}>
+          {group.map((w, i) => (
+            <span key={gi + "-" + i} className="cf-word" style={wordStyleFor(i, sh)}>{w}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   function pickFile(f) {
     if (!f) return;
@@ -246,6 +321,7 @@ export default function App() {
       outlineColor: s.outline, outlineWidth: s.outlineW, lineBox: s.box || null,
       position: s.pos, uppercase: s.upper, letterSpacing: s.spacing,
       animation: s.anim, wordsPerGroup: s.perGroup,
+      posX: capPos.x, posY: capPos.y,
     };
   }
 
@@ -355,15 +431,7 @@ export default function App() {
             ) : (
               <div className="cf-fake"><span>Upload a video to begin</span></div>
             )}
-            {!resultUrl && (
-              <div className="cf-caplayer" style={{ alignItems: posMap[s.pos] }}>
-                <div style={capBoxStyle}>
-                  {group.map((w, i) => (
-                    <span key={gi + "-" + i} className="cf-word" style={wordStyle(i)}>{w}</span>
-                  ))}
-                </div>
-              </div>
-            )}
+            {!resultUrl && captionLayer(boxH / 640, null)}
           </div>
 
           {!resultUrl && (
@@ -436,9 +504,19 @@ export default function App() {
           <p className="cf-eyebrow mt">Position</p>
           <div className="cf-chips">
             {["top", "center", "bottom"].map((p) => (
-              <button key={p} className={"cf-chip" + (s.pos === p ? " on" : "")} onClick={() => up("pos", p)}>{p}</button>
+              <button key={p} className={"cf-chip" + (s.pos === p ? " on" : "")}
+                onClick={() => { up("pos", p); setCapPos(posToXY(p)); }}>{p}</button>
             ))}
           </div>
+          <div className="cf-dpad">
+            <span className="sp" /><button onClick={() => nudge(0, -0.03)} aria-label="up">↑</button><span className="sp" />
+            <button onClick={() => nudge(-0.03, 0)} aria-label="left">←</button>
+            <button onClick={() => nudge(0, 0.03)} aria-label="down">↓</button>
+            <button onClick={() => nudge(0.03, 0)} aria-label="right">→</button>
+          </div>
+          <button className="cf-editbtn" disabled={!videoUrl} onClick={() => setEditing(true)}>
+            ⤢ Drag to position on video
+          </button>
 
           <p className="cf-eyebrow mt">Animation</p>
           <div className="cf-chips">
@@ -490,6 +568,27 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {editing && (
+        <div className="cf-modal" ref={modalRef} tabIndex={-1} onKeyDown={onEditKey}>
+          <div className="cf-modal-video" ref={dragRef} style={{ aspectRatio: aspect ? String(aspect) : "9 / 16" }}>
+            {videoUrl
+              ? <video src={videoUrl} autoPlay loop muted playsInline />
+              : <div className="cf-fake"><span>Upload a video first</span></div>}
+            {captionLayer(editH / 640, { onPointerDown: onCapPointerDown, onPointerMove: onCapPointerMove, onPointerUp: onCapPointerUp })}
+          </div>
+          <p className="cf-modal-hint">Drag the caption, or nudge with the arrows / keyboard.</p>
+          <div className="cf-modal-actions">
+            <div className="cf-dpad">
+              <span className="sp" /><button onClick={() => nudge(0, -0.03)}>↑</button><span className="sp" />
+              <button onClick={() => nudge(-0.03, 0)}>←</button>
+              <button onClick={() => nudge(0, 0.03)}>↓</button>
+              <button onClick={() => nudge(0.03, 0)}>→</button>
+            </div>
+            <button className="cf-btn primary" style={{ width: "auto", padding: "11px 26px" }} onClick={() => setEditing(false)}>Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

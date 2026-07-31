@@ -40,6 +40,13 @@ export function buildAss(words, cfg, width, height) {
   const spacing = +((cfg.letterSpacing || 0) * scale).toFixed(1);
   const marginV = Math.round(height * 0.07);
   const marginH = Math.round(width * 0.06);
+
+  // Free positioning: if the client sent a normalized point, anchor every line
+  // there with \an5 (center) + \pos, overriding the style's alignment/margins.
+  const hasPos = typeof cfg.posX === "number" && typeof cfg.posY === "number";
+  const posX = hasPos ? Math.round(Math.max(0, Math.min(1, cfg.posX)) * width) : 0;
+  const posY = hasPos ? Math.round(Math.max(0, Math.min(1, cfg.posY)) * height) : 0;
+  const posTag = hasPos ? `{\\an5\\pos(${posX},${posY})}` : "";
   const align = { top: 8, center: 5, bottom: 2 }[cfg.position] || 2;
   const bold = (cfg.weight || 400) >= 700 ? -1 : 0;
 
@@ -93,7 +100,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     if (mode === "none") {
       events.push(
-        `Dialogue: 0,${t(gStart)},${t(gEnd)},Cap,,0,0,0,,${line(group, new Set())}`
+        `Dialogue: 0,${t(gStart)},${t(gEnd)},Cap,,0,0,0,,${posTag}${line(group, new Set())}`
       );
       continue;
     }
@@ -106,7 +113,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       if (mode === "fill") for (let k = 0; k <= i; k++) hi.add(k);
       else hi.add(i); // "word"
       events.push(
-        `Dialogue: 0,${t(evStart)},${t(evEnd)},Cap,,0,0,0,,${line(group, hi)}`
+        `Dialogue: 0,${t(evStart)},${t(evEnd)},Cap,,0,0,0,,${posTag}${line(group, hi)}`
       );
     }
   }
