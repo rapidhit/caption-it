@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;600;700;900&family=Montserrat:wght@700;800;900&display=swap');
+*{margin:0;}
+html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
+#root{min-height:100vh;}
 .cf-root{--bg:#0E0E13;--panel:#16161E;--panel2:#1E1E27;--line:#2A2A35;--ink:#ECECF2;
   --mute:#8B8B99;--accent:#FFE14D;--mint:#00E0B8;--red:#FF5C57;
   font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;}
@@ -15,7 +18,7 @@ const CSS = `
 .cf-dot{width:11px;height:11px;border-radius:3px;background:var(--accent);box-shadow:0 0 0 3px rgba(255,225,77,.15);}
 .cf-brand h1{font-size:15px;margin:0;font-weight:800;letter-spacing:-.01em;}
 .cf-brand span{font-size:11px;color:var(--mute);font-weight:600;}
-.cf-grid{display:grid;grid-template-columns:290px 1fr 320px;gap:1px;background:var(--line);min-height:calc(100vh - 52px);}
+.cf-grid{display:grid;grid-template-columns:290px minmax(0,1fr) 330px;gap:1px;background:var(--line);min-height:calc(100vh - 52px);max-width:1320px;margin:0 auto;}
 .cf-col{background:var(--bg);padding:18px;overflow-y:auto;max-height:calc(100vh - 52px);}
 .cf-stage{background:radial-gradient(120% 120% at 50% 0%,#191922 0%,#0B0B10 100%);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;}
@@ -82,7 +85,29 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
 .cf-spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--accent);
   border-radius:50%;display:inline-block;vertical-align:middle;margin-right:8px;animation:cf-spin .7s linear infinite;}
 @keyframes cf-spin{to{transform:rotate(360deg);}}
-@media(max-width:1000px){.cf-grid{grid-template-columns:1fr;}.cf-col{max-height:none;}.cf-stage{order:-1;}}
+/* Tablet: preview full-width on top, presets + controls side by side below */
+@media(max-width:1080px){
+  .cf-grid{grid-template-columns:1fr 1fr;max-width:860px;min-height:0;}
+  .cf-col{max-height:none;overflow:visible;}
+  .cf-stage{grid-column:1 / -1;order:-1;padding:24px 20px 28px;}
+  .cf-video-wrap{max-height:62vh;}
+}
+/* Phone: single stacked column, tuned spacing + preview that fits the screen */
+@media(max-width:680px){
+  .cf-grid{grid-template-columns:1fr;max-width:560px;}
+  .cf-col{padding:16px;}
+  .cf-stage{padding:20px 16px 24px;gap:14px;}
+  .cf-top{padding:12px 16px;}
+  .cf-video-wrap,.cf-transport{max-width:min(340px,74vw);}
+  .cf-video-wrap{max-height:54vh;}
+}
+/* Small phones */
+@media(max-width:380px){
+  .cf-video-wrap,.cf-transport{max-width:82vw;}
+  .cf-video-wrap{max-height:50vh;}
+  .cf-chip{font-size:10px;padding:7px 3px;}
+  .cf-preset{padding:10px 11px;}
+}
 `;
 
 const FONTS = ["Anton", "Archivo Black", "Bebas Neue", "Montserrat", "Inter"];
