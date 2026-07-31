@@ -49,14 +49,17 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
 .cf-editbtn{width:100%;margin-top:10px;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;}
 .cf-editbtn:hover:not(:disabled){border-color:var(--accent);}
 .cf-editbtn:disabled{opacity:.5;cursor:not-allowed;}
-.cf-modal{position:fixed;inset:0;background:rgba(6,6,10,.86);backdrop-filter:blur(6px);z-index:50;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;outline:none;}
-.cf-modal-video{position:relative;max-width:min(92vw,520px);max-height:70vh;background:#000;border-radius:14px;
-  overflow:hidden;box-shadow:0 30px 80px -20px #000;touch-action:none;}
-.cf-modal-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
-.cf-modal-hint{font-size:12px;color:var(--mute);margin:0;}
-.cf-modal-actions{display:flex;gap:14px;align-items:center;}
-.cf-modal-actions .cf-dpad{margin-top:0;}
+.cf-modal{position:fixed;inset:0;background:#050507;z-index:50;display:flex;flex-direction:column;outline:none;}
+.cf-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--line);flex:none;}
+.cf-modal-title{font-size:13px;font-weight:700;color:var(--ink);}
+.cf-modal-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;}
+.cf-modal-video{position:relative;max-width:96vw;max-height:100%;background:#000;border-radius:12px;
+  overflow:hidden;box-shadow:0 20px 60px -20px #000;touch-action:none;user-select:none;}
+.cf-modal-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;}
+.cf-modal-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 18px 20px;
+  border-top:1px solid var(--line);flex:none;flex-wrap:wrap;}
+.cf-modal-foot .cf-dpad{margin-top:0;}
+.cf-modal-hint{font-size:12px;color:var(--mute);max-width:340px;}
 .cf-word{display:inline-block;transition:transform .12s ease,color .1s;}
 .cf-transport{display:flex;align-items:center;gap:12px;width:100%;max-width:340px;}
 .cf-play{width:42px;height:42px;border-radius:50%;border:none;flex:none;background:var(--accent);
@@ -189,6 +192,8 @@ export default function App() {
   const [editH, setEditH] = useState(600);
   const dragRef = useRef(null);
   const modalRef = useRef(null);
+  const capRef = useRef(null);
+  const dragOffsetRef = useRef({ dx: 0, dy: 0 });
   const clampPos = (v) => Math.max(0.02, Math.min(0.98, v));
 
   const words = useMemo(() => previewText.trim().split(/\s+/).filter(Boolean), [previewText]);
@@ -235,13 +240,32 @@ export default function App() {
   const up = (k, v) => setS((o) => ({ ...o, [k]: v }));
 
   const nudge = (dx, dy) => setCapPos((p) => ({ x: clampPos(p.x + dx), y: clampPos(p.y + dy) }));
-  function onCapPointerDown(e) { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); setDragging(true); }
-  function onCapPointerMove(e) {
-    if (!dragging || !dragRef.current) return;
+  function stagePoint(e) {
     const r = dragRef.current.getBoundingClientRect();
-    setCapPos({ x: clampPos((e.clientX - r.left) / r.width), y: clampPos((e.clientY - r.top) / r.height) });
+    return { px: (e.clientX - r.left) / r.width, py: (e.clientY - r.top) / r.height };
   }
-  function onCapPointerUp(e) { setDragging(false); e.currentTarget.releasePointerCapture?.(e.pointerId); }
+  function onStageDown(e) {
+    if (!dragRef.current) return;
+    e.preventDefault();
+    const { px, py } = stagePoint(e);
+    const cr = capRef.current?.getBoundingClientRect();
+    const onCaption = cr && e.clientX >= cr.left && e.clientX <= cr.right && e.clientY >= cr.top && e.clientY <= cr.bottom;
+    if (onCaption) {
+      dragOffsetRef.current = { dx: px - capPos.x, dy: py - capPos.y }; // keep grab point under finger
+    } else {
+      dragOffsetRef.current = { dx: 0, dy: 0 };
+      setCapPos({ x: clampPos(px), y: clampPos(py) }); // jump the caption to where you pressed
+    }
+    dragRef.current.setPointerCapture?.(e.pointerId);
+    setDragging(true);
+  }
+  function onStageMove(e) {
+    if (!dragging || !dragRef.current) return;
+    const { px, py } = stagePoint(e);
+    const off = dragOffsetRef.current;
+    setCapPos({ x: clampPos(px - off.dx), y: clampPos(py - off.dy) });
+  }
+  function onStageUp(e) { setDragging(false); dragRef.current?.releasePointerCapture?.(e.pointerId); }
   function onEditKey(e) {
     const m = { ArrowUp: [0, -0.02], ArrowDown: [0, 0.02], ArrowLeft: [-0.02, 0], ArrowRight: [0.02, 0] };
     if (m[e.key]) { e.preventDefault(); nudge(m[e.key][0], m[e.key][1]); }
@@ -283,20 +307,21 @@ export default function App() {
     };
   }
 
-  // The caption block, anchored at the normalized capPos. Pass drag handlers to
-  // make it grabbable (used in the position editor).
-  function captionLayer(scale, handlers) {
+  // The caption block, anchored at the normalized capPos. In edit mode it shows
+  // a dashed grab affordance and exposes its box via capRef (the drag surface is
+  // the whole video, wired on the modal container).
+  function captionLayer(scale, opts = {}) {
+    const { edit } = opts;
     const sh = shadowFor(scale);
     return (
       <div className="cf-caplayer">
-        <div className="cf-capbox"
+        <div className="cf-capbox" ref={edit ? capRef : null}
           style={{
             ...capBoxStyleFor(scale),
             left: `${capPos.x * 100}%`, top: `${capPos.y * 100}%`,
             transform: "translate(-50%,-50%)", maxWidth: "92%",
-            ...(handlers ? { pointerEvents: "auto", cursor: dragging ? "grabbing" : "grab", touchAction: "none" } : {}),
-          }}
-          {...(handlers || {})}>
+            ...(edit ? { outline: "2px dashed rgba(255,255,255,.6)", outlineOffset: "5px" } : {}),
+          }}>
           {group.map((w, i) => (
             <span key={gi + "-" + i} className="cf-word" style={wordStyleFor(i, sh)}>{w}</span>
           ))}
@@ -431,7 +456,7 @@ export default function App() {
             ) : (
               <div className="cf-fake"><span>Upload a video to begin</span></div>
             )}
-            {!resultUrl && captionLayer(boxH / 640, null)}
+            {!resultUrl && captionLayer(boxH / 640)}
           </div>
 
           {!resultUrl && (
@@ -571,21 +596,28 @@ export default function App() {
 
       {editing && (
         <div className="cf-modal" ref={modalRef} tabIndex={-1} onKeyDown={onEditKey}>
-          <div className="cf-modal-video" ref={dragRef} style={{ aspectRatio: aspect ? String(aspect) : "9 / 16" }}>
-            {videoUrl
-              ? <video src={videoUrl} autoPlay loop muted playsInline />
-              : <div className="cf-fake"><span>Upload a video first</span></div>}
-            {captionLayer(editH / 640, { onPointerDown: onCapPointerDown, onPointerMove: onCapPointerMove, onPointerUp: onCapPointerUp })}
+          <div className="cf-modal-bar">
+            <span className="cf-modal-title">Drag the caption to position it</span>
+            <button className="cf-btn primary" style={{ width: "auto", padding: "9px 24px" }} onClick={() => setEditing(false)}>Done</button>
           </div>
-          <p className="cf-modal-hint">Drag the caption, or nudge with the arrows / keyboard.</p>
-          <div className="cf-modal-actions">
-            <div className="cf-dpad">
-              <span className="sp" /><button onClick={() => nudge(0, -0.03)}>↑</button><span className="sp" />
-              <button onClick={() => nudge(-0.03, 0)}>←</button>
-              <button onClick={() => nudge(0, 0.03)}>↓</button>
-              <button onClick={() => nudge(0.03, 0)}>→</button>
+          <div className="cf-modal-stage">
+            <div className="cf-modal-video" ref={dragRef}
+              style={{ aspectRatio: aspect ? String(aspect) : "9 / 16", cursor: dragging ? "grabbing" : "grab" }}
+              onPointerDown={onStageDown} onPointerMove={onStageMove} onPointerUp={onStageUp}>
+              {videoUrl
+                ? <video src={videoUrl} autoPlay loop muted playsInline />
+                : <div className="cf-fake"><span>Upload a video first</span></div>}
+              {captionLayer(editH / 640, { edit: true })}
             </div>
-            <button className="cf-btn primary" style={{ width: "auto", padding: "11px 26px" }} onClick={() => setEditing(false)}>Done</button>
+          </div>
+          <div className="cf-modal-foot">
+            <div className="cf-dpad">
+              <span className="sp" /><button onClick={() => nudge(0, -0.02)}>↑</button><span className="sp" />
+              <button onClick={() => nudge(-0.02, 0)}>←</button>
+              <button onClick={() => nudge(0, 0.02)}>↓</button>
+              <button onClick={() => nudge(0.02, 0)}>→</button>
+            </div>
+            <span className="cf-modal-hint">grab the caption and drag, tap elsewhere to move it there, or nudge with arrows</span>
           </div>
         </div>
       )}
