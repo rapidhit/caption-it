@@ -24,15 +24,24 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;}
 .cf-eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);font-weight:700;margin:0 0 12px;}
 .cf-eyebrow.mt{margin-top:24px;}
-.cf-preset{width:100%;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);
-  border-radius:10px;padding:11px 13px;margin-bottom:8px;cursor:pointer;transition:.15s;
-  display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.cf-preset:hover{border-color:#3a3a48;background:var(--panel2);}
-.cf-preset.on{border-color:var(--accent);background:rgba(255,225,77,.06);}
-.cf-preset b{font-size:13px;font-weight:700;display:block;}
-.cf-preset small{font-size:11px;color:var(--mute);}
-.cf-swatch{width:34px;height:34px;border-radius:7px;flex:none;display:flex;align-items:center;
-  justify-content:center;font-size:10px;font-weight:900;}
+.cf-preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.cf-preset-card{display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink);border-radius:12px;padding:9px;cursor:pointer;transition:.15s;}
+.cf-preset-card:hover{border-color:#3a3a48;background:var(--panel2);}
+.cf-preset-card.on{border-color:var(--accent);background:rgba(255,225,77,.08);
+  box-shadow:0 0 0 1px var(--accent) inset;}
+.cf-preset-prev{border-radius:8px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;overflow:hidden;min-height:56px;}
+.cf-preset-card b{font-size:12px;font-weight:700;}
+.cf-preset-card small{font-size:10px;color:var(--mute);line-height:1.3;}
+.cf-acc{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--panel);}
+.cf-acc.open{border-color:#3a3a48;}
+.cf-acc-head{width:100%;display:flex;align-items:center;justify-content:space-between;background:none;
+  border:none;color:var(--ink);font-size:12.5px;font-weight:700;padding:12px 14px;cursor:pointer;}
+.cf-acc-chev{color:var(--mute);font-size:15px;font-weight:400;}
+.cf-acc-body{padding:2px 14px 14px;}
+.cf-field-label{font-size:11px;font-weight:700;color:var(--mute);margin:0 0 6px;}
+.cf-field-label.mt{margin-top:14px;}
 .cf-video-wrap{position:relative;width:100%;max-width:340px;aspect-ratio:9/16;border-radius:16px;
   overflow:hidden;background:#000;box-shadow:0 24px 60px -20px rgba(0,0,0,.8),0 0 0 1px var(--line);}
 .cf-video-wrap video,.cf-fake{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
@@ -144,7 +153,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
   .cf-video-wrap,.cf-transport{max-width:82vw;}
   .cf-video-wrap{max-height:50vh;}
   .cf-chip{font-size:10px;padding:7px 3px;}
-  .cf-preset{padding:10px 11px;}
+  .cf-preset-card{padding:8px;}
+  .cf-preset-grid{grid-template-columns:1fr 1fr;}
 }
 `;
 
@@ -179,6 +189,39 @@ const PRESETS = [
 
 const posToXY = (pos) => ({ x: 0.5, y: pos === "top" ? 0.12 : pos === "center" ? 0.5 : 0.85 });
 
+// 8-direction text outline as a text-shadow string.
+function outlineShadow(width, color) {
+  if (width <= 0) return "0 1px 2px rgba(0,0,0,.55)";
+  return Array.from({ length: 8 }, (_, i) => {
+    const a = (i * Math.PI) / 4;
+    return `${Math.cos(a) * width}px ${Math.sin(a) * width}px 0 ${color}`;
+  }).join(",");
+}
+
+// Inline style for a style-card preview word.
+function previewStyle(cs, px, useActive) {
+  return {
+    fontFamily: `'${cs.font}', sans-serif`, fontWeight: cs.weight, fontSize: px,
+    letterSpacing: Math.min(cs.spacing, 2) * 0.7, textTransform: cs.upper ? "uppercase" : "none",
+    lineHeight: 1.1, color: useActive ? cs.active : cs.color,
+    background: cs.box || "transparent", padding: cs.box ? "1px 5px" : 0, borderRadius: 4,
+    textShadow: outlineShadow(cs.outlineW * 0.35, cs.outline),
+  };
+}
+
+// Collapsible settings section. Kept module-level so its inputs never remount.
+function Section({ id, title, openSec, setOpenSec, children }) {
+  const open = openSec === id;
+  return (
+    <div className={"cf-acc" + (open ? " open" : "")}>
+      <button type="button" className="cf-acc-head" onClick={() => setOpenSec(open ? null : id)}>
+        <span>{title}</span><span className="cf-acc-chev">{open ? "−" : "+"}</span>
+      </button>
+      <div className="cf-acc-body" style={{ display: open ? "block" : "none" }}>{children}</div>
+    </div>
+  );
+}
+
 export default function App() {
   const [preset, setPreset] = useState("hormozi");
   const [s, setS] = useState({ ...PRESETS[0].s });
@@ -201,6 +244,7 @@ export default function App() {
   const [editing, setEditing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [editH, setEditH] = useState(600);
+  const [openSec, setOpenSec] = useState(null); // which right-panel accordion section is expanded
   const dragRef = useRef(null);
   const modalRef = useRef(null);
   const capRef = useRef(null);
@@ -463,14 +507,20 @@ export default function App() {
       <div className="cf-grid">
         {/* LEFT */}
         <div className="cf-col">
-          <p className="cf-eyebrow">Style presets</p>
-          {PRESETS.map((p) => (
-            <button key={p.id} className={"cf-preset" + (preset === p.id ? " on" : "")}
-              onClick={() => applyPreset(p.id)}>
-              <span><b>{p.name}</b><small>{p.desc}</small></span>
-              <span className="cf-swatch" style={{ background: p.sw.bg, color: p.sw.c }}>{p.sw.t}</span>
-            </button>
-          ))}
+          <p className="cf-eyebrow">Style</p>
+          <div className="cf-preset-grid">
+            {PRESETS.map((p) => (
+              <button key={p.id} className={"cf-preset-card" + (preset === p.id ? " on" : "")}
+                onClick={() => applyPreset(p.id)}>
+                <span className="cf-preset-prev" style={{ background: p.sw.bg }}>
+                  <span style={previewStyle(p.s, 15, false)}>{p.s.mode === "none" ? "CAPTION" : "SUB"}</span>
+                  <span style={previewStyle(p.s, 15, true)}>{p.s.mode === "none" ? "TEXT" : "TITLE"}</span>
+                </span>
+                <b>{p.name}</b>
+                <small>{p.desc}</small>
+              </button>
+            ))}
+          </div>
           <p className="cf-eyebrow mt">Preview text</p>
           <textarea className="cf-text" value={previewText}
             onChange={(e) => { setPreviewText(e.target.value); setWi(0); }} />
@@ -521,79 +571,83 @@ export default function App() {
 
         {/* RIGHT */}
         <div className="cf-col">
-          <p className="cf-eyebrow">Type</p>
-          <div className="cf-field">
-            <label>Font</label>
-            <select className="cf-select" value={s.font} onChange={(e) => up("font", e.target.value)}>
-              {FONTS.map((f) => <option key={f}>{f}</option>)}
-            </select>
-          </div>
-          <div className="cf-field">
-            <label>Size <b>{s.size}px</b></label>
-            <input type="range" min="14" max="60" value={s.size} onChange={(e) => up("size", +e.target.value)} />
-          </div>
-          <div className="cf-field">
-            <label>Weight <b>{s.weight}</b></label>
-            <input type="range" min="400" max="900" step="100" value={s.weight} onChange={(e) => up("weight", +e.target.value)} />
-          </div>
-          <div className="cf-field">
-            <label>Letter spacing <b>{s.spacing}</b></label>
-            <input type="range" min="0" max="6" step="0.5" value={s.spacing} onChange={(e) => up("spacing", +e.target.value)} />
-          </div>
+          <p className="cf-eyebrow">More settings</p>
 
-          <p className="cf-eyebrow mt">Colors</p>
-          <div className="cf-field">
-            <label>Base · Active · Outline</label>
-            <div className="cf-swatchrow">
-              <input type="color" className="cf-color" value={s.color} onChange={(e) => up("color", e.target.value)} />
-              <input type="color" className="cf-color" value={s.active} onChange={(e) => up("active", e.target.value)} />
-              <input type="color" className="cf-color" value={s.outline} onChange={(e) => up("outline", e.target.value)} />
+          <Section id="position" title="Position" openSec={openSec} setOpenSec={setOpenSec}>
+            <div className="cf-chips">
+              {["top", "center", "bottom"].map((p) => (
+                <button key={p} className={"cf-chip" + (s.pos === p ? " on" : "")}
+                  onClick={() => { up("pos", p); setCapPos(posToXY(p)); }}>{p}</button>
+              ))}
             </div>
-          </div>
-          <div className="cf-field">
-            <label>Outline width <b>{s.outlineW}px</b></label>
-            <input type="range" min="0" max="12" value={s.outlineW} onChange={(e) => up("outlineW", +e.target.value)} />
-          </div>
+            <button className="cf-editbtn" disabled={!videoUrl} onClick={() => setEditing(true)}>
+              ⤢ Drag to position on video
+            </button>
+          </Section>
 
-          <p className="cf-eyebrow mt">Highlight</p>
-          <div className="cf-chips">
-            {["word", "fill", "none"].map((m) => (
-              <button key={m} className={"cf-chip" + (s.mode === m ? " on" : "")} onClick={() => up("mode", m)}>{m}</button>
-            ))}
-          </div>
+          <Section id="font" title="Font & text" openSec={openSec} setOpenSec={setOpenSec}>
+            <div className="cf-field">
+              <label>Font</label>
+              <select className="cf-select" value={s.font} onChange={(e) => up("font", e.target.value)}>
+                {FONTS.map((f) => <option key={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className="cf-field">
+              <label>Size <b>{s.size}px</b></label>
+              <input type="range" min="14" max="60" value={s.size} onChange={(e) => up("size", +e.target.value)} />
+            </div>
+            <div className="cf-field">
+              <label>Weight <b>{s.weight}</b></label>
+              <input type="range" min="400" max="900" step="100" value={s.weight} onChange={(e) => up("weight", +e.target.value)} />
+            </div>
+            <div className="cf-field">
+              <label>Letter spacing <b>{s.spacing}</b></label>
+              <input type="range" min="0" max="6" step="0.5" value={s.spacing} onChange={(e) => up("spacing", +e.target.value)} />
+            </div>
+            <div className="cf-toggle">
+              <span>UPPERCASE</span>
+              <button className={"cf-tog" + (s.upper ? " on" : "")} onClick={() => up("upper", !s.upper)}><i /></button>
+            </div>
+          </Section>
 
-          <p className="cf-eyebrow mt">Position</p>
-          <div className="cf-chips">
-            {["top", "center", "bottom"].map((p) => (
-              <button key={p} className={"cf-chip" + (s.pos === p ? " on" : "")}
-                onClick={() => { up("pos", p); setCapPos(posToXY(p)); }}>{p}</button>
-            ))}
-          </div>
-          <button className="cf-editbtn" disabled={!videoUrl} onClick={() => setEditing(true)}>
-            ⤢ Drag to position on video
-          </button>
+          <Section id="color" title="Colors" openSec={openSec} setOpenSec={setOpenSec}>
+            <div className="cf-field">
+              <label>Base · Active · Outline</label>
+              <div className="cf-swatchrow">
+                <input type="color" className="cf-color" value={s.color} onChange={(e) => up("color", e.target.value)} />
+                <input type="color" className="cf-color" value={s.active} onChange={(e) => up("active", e.target.value)} />
+                <input type="color" className="cf-color" value={s.outline} onChange={(e) => up("outline", e.target.value)} />
+              </div>
+            </div>
+            <div className="cf-field">
+              <label>Outline width <b>{s.outlineW}px</b></label>
+              <input type="range" min="0" max="12" value={s.outlineW} onChange={(e) => up("outlineW", +e.target.value)} />
+            </div>
+            <div className="cf-toggle">
+              <span>Line background box</span>
+              <button className={"cf-tog" + (s.box ? " on" : "")}
+                onClick={() => up("box", s.box ? "" : "rgba(0,0,0,0.55)")}><i /></button>
+            </div>
+          </Section>
 
-          <p className="cf-eyebrow mt">Animation</p>
-          <div className="cf-chips">
-            {["pop", "fade", "none"].map((a) => (
-              <button key={a} className={"cf-chip" + (s.anim === a ? " on" : "")} onClick={() => up("anim", a)}>{a}</button>
-            ))}
-          </div>
-
-          <div className="cf-field" style={{ marginTop: 16 }}>
-            <label>Words on screen <b>{s.perGroup}</b></label>
-            <input type="range" min="1" max="8" value={s.perGroup} onChange={(e) => up("perGroup", +e.target.value)} />
-          </div>
-
-          <div className="cf-toggle">
-            <span>UPPERCASE</span>
-            <button className={"cf-tog" + (s.upper ? " on" : "")} onClick={() => up("upper", !s.upper)}><i /></button>
-          </div>
-          <div className="cf-toggle">
-            <span>Line background box</span>
-            <button className={"cf-tog" + (s.box ? " on" : "")}
-              onClick={() => up("box", s.box ? "" : "rgba(0,0,0,0.55)")}><i /></button>
-          </div>
+          <Section id="highlight" title="Highlight & animation" openSec={openSec} setOpenSec={setOpenSec}>
+            <p className="cf-field-label">Highlight</p>
+            <div className="cf-chips">
+              {["word", "fill", "none"].map((m) => (
+                <button key={m} className={"cf-chip" + (s.mode === m ? " on" : "")} onClick={() => up("mode", m)}>{m}</button>
+              ))}
+            </div>
+            <p className="cf-field-label mt">Animation</p>
+            <div className="cf-chips">
+              {["pop", "fade", "none"].map((a) => (
+                <button key={a} className={"cf-chip" + (s.anim === a ? " on" : "")} onClick={() => up("anim", a)}>{a}</button>
+              ))}
+            </div>
+            <div className="cf-field" style={{ marginTop: 14 }}>
+              <label>Words on screen <b>{s.perGroup}</b></label>
+              <input type="range" min="1" max="8" value={s.perGroup} onChange={(e) => up("perGroup", +e.target.value)} />
+            </div>
+          </Section>
 
           <p className="cf-eyebrow mt">Render</p>
           <button className="cf-btn primary" disabled={busy || !file} onClick={generate}>
