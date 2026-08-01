@@ -132,6 +132,15 @@ app.get("/api/progress/:id", (req, reply) => {
   req.raw.on("close", () => { clearInterval(ping); job.subs.delete(raw); });
 });
 
+// Plain JSON status poll — for clients (e.g. React Native) without solid SSE support.
+app.get("/api/status/:id", async (req, reply) => {
+  const job = jobs.get(req.params.id);
+  if (!job) { reply.code(404); return { phase: "error", message: "Job not found." }; }
+  if (job.error) return { phase: "error", message: job.error };
+  if (job.done) return { phase: "done" };
+  return job.last || { phase: "queued" };
+});
+
 // Download the finished MP4, then clean up the job.
 app.get("/api/result/:id", async (req, reply) => {
   const job = jobs.get(req.params.id);
