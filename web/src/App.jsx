@@ -52,11 +52,12 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
 .cf-modal{position:fixed;inset:0;background:#050507;z-index:50;display:flex;flex-direction:column;outline:none;}
 .cf-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--line);flex:none;}
 .cf-modal-title{font-size:13px;font-weight:700;color:var(--ink);}
-.cf-modal-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;}
-.cf-modal-video{position:relative;max-width:96vw;max-height:calc(100vh - 150px);background:#000;border-radius:12px;
+.cf-modal-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:14px;min-height:0;overflow:hidden;}
+.cf-modal-video{position:relative;line-height:0;max-width:96vw;background:#000;border-radius:12px;
   overflow:hidden;box-shadow:0 20px 60px -20px #000;touch-action:none;user-select:none;}
-.cf-modal-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;}
-.cf-modal-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 18px 20px;
+.cf-modal-video video{display:block;max-width:96vw;max-height:calc(100vh - 168px);width:auto;height:auto;pointer-events:none;}
+.cf-modal-video .cf-fake{position:absolute;inset:0;}
+.cf-modal-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 18px calc(14px + env(safe-area-inset-bottom));
   border-top:1px solid var(--line);flex:none;flex-wrap:wrap;}
 .cf-modal-foot .cf-dpad{margin-top:0;}
 .cf-modal-hint{font-size:12px;color:var(--mute);max-width:340px;}
@@ -64,6 +65,9 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
 .cf-guide-v{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px);}
 .cf-guide-h{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px);}
 .cf-guide.on{background:var(--mint);box-shadow:0 0 7px var(--mint);}
+.cf-capbox.editing{outline:1.5px solid rgba(255,255,255,.92);outline-offset:6px;border-radius:4px;}
+.cf-h{position:absolute;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.4);pointer-events:none;}
+.cf-h.tl{left:-6px;top:-6px;}.cf-h.tr{right:-6px;top:-6px;}.cf-h.bl{left:-6px;bottom:-6px;}.cf-h.br{right:-6px;bottom:-6px;}
 .cf-word{display:inline-block;transition:transform .12s ease,color .1s;}
 .cf-transport{display:flex;align-items:center;gap:12px;width:100%;max-width:340px;}
 .cf-play{width:42px;height:42px;border-radius:50%;border:none;flex:none;background:var(--accent);
@@ -320,16 +324,16 @@ export default function App() {
     const sh = shadowFor(scale);
     return (
       <div className="cf-caplayer">
-        <div className="cf-capbox" ref={edit ? capRef : null}
+        <div className={"cf-capbox" + (edit ? " editing" : "")} ref={edit ? capRef : null}
           style={{
             ...capBoxStyleFor(scale),
             left: `${capPos.x * 100}%`, top: `${capPos.y * 100}%`,
             transform: "translate(-50%,-50%)", maxWidth: "92%",
-            ...(edit ? { outline: "2px dashed rgba(255,255,255,.6)", outlineOffset: "5px" } : {}),
           }}>
           {group.map((w, i) => (
             <span key={gi + "-" + i} className="cf-word" style={wordStyleFor(i, sh)}>{w}</span>
           ))}
+          {edit && <><span className="cf-h tl" /><span className="cf-h tr" /><span className="cf-h bl" /><span className="cf-h br" /></>}
         </div>
       </div>
     );
@@ -607,7 +611,7 @@ export default function App() {
           </div>
           <div className="cf-modal-stage">
             <div className="cf-modal-video" ref={dragRef}
-              style={{ aspectRatio: aspect ? String(aspect) : "9 / 16", cursor: dragging ? "grabbing" : "grab" }}
+              style={{ cursor: dragging ? "grabbing" : "grab", ...(videoUrl ? {} : { width: "min(56vh,320px)", aspectRatio: aspect ? String(aspect) : "9 / 16" }) }}
               onPointerDown={onStageDown} onPointerMove={onStageMove} onPointerUp={onStageUp}>
               {videoUrl
                 ? <video src={videoUrl} autoPlay loop muted playsInline />
@@ -628,7 +632,7 @@ export default function App() {
               <button onClick={() => nudge(0, 0.02)}>↓</button>
               <button onClick={() => nudge(0.02, 0)}>→</button>
             </div>
-            <span className="cf-modal-hint">grab the caption and drag, tap elsewhere to move it there, or nudge with arrows</span>
+            <span className="cf-modal-hint">Drag the caption to move it · arrows to fine-tune</span>
           </div>
         </div>
       )}
