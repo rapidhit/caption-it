@@ -53,7 +53,7 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
 .cf-modal-bar{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--line);flex:none;}
 .cf-modal-title{font-size:13px;font-weight:700;color:var(--ink);}
 .cf-modal-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;}
-.cf-modal-video{position:relative;max-width:96vw;max-height:100%;background:#000;border-radius:12px;
+.cf-modal-video{position:relative;max-width:96vw;max-height:calc(100vh - 150px);background:#000;border-radius:12px;
   overflow:hidden;box-shadow:0 20px 60px -20px #000;touch-action:none;user-select:none;}
 .cf-modal-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;}
 .cf-modal-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 18px 20px;
