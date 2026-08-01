@@ -61,6 +61,9 @@ html,body{margin:0;padding:0;background:#0E0E13;-webkit-text-size-adjust:100%;}
   border-top:1px solid var(--line);flex:none;flex-wrap:wrap;}
 .cf-modal-foot .cf-dpad{margin-top:0;}
 .cf-modal-hint{font-size:12px;color:var(--mute);max-width:340px;}
+.cf-size-ctrl{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;color:var(--mute);}
+.cf-size-ctrl input[type=range]{width:170px;margin:0;}
+.cf-size-ctrl b{color:var(--mint);min-width:26px;text-align:right;font-variant-numeric:tabular-nums;}
 .cf-guide{position:absolute;pointer-events:none;z-index:3;background:rgba(255,255,255,.35);}
 .cf-guide-v{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px);}
 .cf-guide-h{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px);}
@@ -202,6 +205,8 @@ export default function App() {
   const modalRef = useRef(null);
   const capRef = useRef(null);
   const dragOffsetRef = useRef({ dx: 0, dy: 0 });
+  const pointersRef = useRef(new Map());
+  const pinchRef = useRef(null);
   const clampPos = (v) => Math.max(0.02, Math.min(0.98, v));
 
   const words = useMemo(() => previewText.trim().split(/\s+/).filter(Boolean), [previewText]);
@@ -252,9 +257,20 @@ export default function App() {
     const r = dragRef.current.getBoundingClientRect();
     return { px: (e.clientX - r.left) / r.width, py: (e.clientY - r.top) / r.height };
   }
+  const twoFingerDist = () => {
+    const pts = [...pointersRef.current.values()];
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
   function onStageDown(e) {
     if (!dragRef.current) return;
     e.preventDefault();
+    dragRef.current.setPointerCapture?.(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2) {                 // second finger → pinch to resize
+      pinchRef.current = { startDist: twoFingerDist(), startSize: s.size };
+      setDragging(false);
+      return;
+    }
     const { px, py } = stagePoint(e);
     const cr = capRef.current?.getBoundingClientRect();
     const onCaption = cr && e.clientX >= cr.left && e.clientX <= cr.right && e.clientY >= cr.top && e.clientY <= cr.bottom;
@@ -264,17 +280,28 @@ export default function App() {
       dragOffsetRef.current = { dx: 0, dy: 0 };
       setCapPos({ x: clampPos(px), y: clampPos(py) }); // jump the caption to where you pressed
     }
-    dragRef.current.setPointerCapture?.(e.pointerId);
     setDragging(true);
   }
   function onStageMove(e) {
-    if (!dragging || !dragRef.current) return;
+    if (!dragRef.current) return;
+    if (pointersRef.current.has(e.pointerId)) pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinchRef.current && pointersRef.current.size >= 2) {
+      const ratio = twoFingerDist() / pinchRef.current.startDist;
+      up("size", Math.max(14, Math.min(60, Math.round(pinchRef.current.startSize * ratio))));
+      return;
+    }
+    if (!dragging) return;
     const { px, py } = stagePoint(e);
     const off = dragOffsetRef.current;
     const snap = (v) => (Math.abs(v - 0.5) < 0.025 ? 0.5 : v); // pull to the center lines
     setCapPos({ x: snap(clampPos(px - off.dx)), y: snap(clampPos(py - off.dy)) });
   }
-  function onStageUp(e) { setDragging(false); dragRef.current?.releasePointerCapture?.(e.pointerId); }
+  function onStageUp(e) {
+    pointersRef.current.delete(e.pointerId);
+    dragRef.current?.releasePointerCapture?.(e.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (pointersRef.current.size === 0) setDragging(false);
+  }
   function onEditKey(e) {
     const m = { ArrowUp: [0, -0.02], ArrowDown: [0, 0.02], ArrowLeft: [-0.02, 0], ArrowRight: [0.02, 0] };
     if (m[e.key]) { e.preventDefault(); nudge(m[e.key][0], m[e.key][1]); }
@@ -542,12 +569,6 @@ export default function App() {
                 onClick={() => { up("pos", p); setCapPos(posToXY(p)); }}>{p}</button>
             ))}
           </div>
-          <div className="cf-dpad">
-            <span className="sp" /><button onClick={() => nudge(0, -0.03)} aria-label="up">↑</button><span className="sp" />
-            <button onClick={() => nudge(-0.03, 0)} aria-label="left">←</button>
-            <button onClick={() => nudge(0, 0.03)} aria-label="down">↓</button>
-            <button onClick={() => nudge(0.03, 0)} aria-label="right">→</button>
-          </div>
           <button className="cf-editbtn" disabled={!videoUrl} onClick={() => setEditing(true)}>
             ⤢ Drag to position on video
           </button>
@@ -626,13 +647,12 @@ export default function App() {
             </div>
           </div>
           <div className="cf-modal-foot">
-            <div className="cf-dpad">
-              <span className="sp" /><button onClick={() => nudge(0, -0.02)}>↑</button><span className="sp" />
-              <button onClick={() => nudge(-0.02, 0)}>←</button>
-              <button onClick={() => nudge(0, 0.02)}>↓</button>
-              <button onClick={() => nudge(0.02, 0)}>→</button>
-            </div>
-            <span className="cf-modal-hint">Drag the caption to move it · arrows to fine-tune</span>
+            <label className="cf-size-ctrl">
+              <span>Size</span>
+              <input type="range" min="14" max="60" value={s.size} onChange={(e) => up("size", +e.target.value)} />
+              <b>{s.size}</b>
+            </label>
+            <span className="cf-modal-hint">Drag to move · pinch or slider to resize</span>
           </div>
         </div>
       )}
